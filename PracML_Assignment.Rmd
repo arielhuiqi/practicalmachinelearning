@@ -1,0 +1,117 @@
+---
+title: " "
+author: "Ariel Huang"
+date: "27 September 2015"
+output: 
+  html_document:
+    fig_width: 8
+    fig_height: 7
+---
+###Prediction of manner of exercise  
+######Ariel Huang
+######27 September 2015  
+
+####Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+***
+####Reproducibility
+For reproducibility, set the seed as below.
+```{r,cache=TRUE}
+set.seed(1234)
+```
+
+####Approach
+Outcome variable is `classe` : 
+Participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions,
+A - exactly according to the specification
+B - throwing the elbows to the front
+C - lifting the dumbbell only halfway
+D - lowering the dumbbell only halfway
+E - throwing the hips to the front
+
+Prediction evaluations will be based on maximizing the accuracy and minimizing the out-of-sample error. 
+
+Two models will be tested using `Random Forest` and `Decision Tree` algorithms. 
+The model with the highest accuracy will be chosen as final model.
+
+####Data
+Load the libraries required for analysis.
+```{r,warning=FALSE,message=FALSE}
+library(ggplot2)
+library(lattice)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+```
+
+Download the training and test data from the URLs.
+```{r,cache=TRUE}
+data_train <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c("NA","#DIV/0!",""))
+data_test <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c("NA","#DIV/0!",""))
+```
+
+Exclude near zero variance features and NA values
+```{r,cache=TRUE}
+nzvvar<- nearZeroVar(data_train)
+data_train <- data_train[, -nzvvar]
+
+nalength <- sapply(data_train, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nacols <- names(nalength[nalength < 0.6 * length(data_train$classe)])
+desccols <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+excols <- c(nacols, desccols)
+data_train <- data_train[, !names(data_train) %in% excols]
+```
+
+Partition the training data into 60% for training and 40% for testing.
+```{r,cache=TRUE}
+inTrain <- createDataPartition(y=data_train$classe, p=0.6, list=FALSE)
+data_train_train <- data_train[inTrain, ] 
+data_train_test <- data_train[-inTrain, ]
+```
+
+####Random Forest
+```{r,cache=TRUE}
+rfmodel <- randomForest(classe ~ ., data = data_train_train, importance = TRUE, ntrees = 10)
+rfpredict <- predict(rfmodel, data_train_test)
+confusionMatrix(rfpredict, data_train_test$classe)
+```
+The cross validation accuracy is 99.1%, i.e. the out-of-sample error is 0.9%. 
+
+####Decision Tree
+```{r,cache=TRUE}
+dtmodel <- rpart(classe ~ ., data=data_train_train, method="class")
+dtpredict <- predict(dtmodel, data_train_test, type = "class")
+
+rpart.plot(dtmodel, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+confusionMatrix(dtpredict, data_train_test$classe)
+```
+The cross validation accuracy is 74.7%, i.e. the out-of-sample error is 25.3%. 
+
+####Conclusion
+As illustrated, `Random Forest` has a higher accuracy (99.4%) than `Decision Tree` (69.5%).
+
+Predict using `data_test`.
+```{r,cache=TRUE}
+rftest <- predict(rfmodel, data_test)
+rftest
+```
+
+####Submission
+```{r,cache=TRUE}
+answers <- as.vector(rftest)
+
+pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename = paste0("problem_id_", i, ".txt")
+        write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, 
+            col.names = FALSE)
+    }
+}
+
+pml_write_files(answers)
+```
